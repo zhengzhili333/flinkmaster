@@ -594,7 +594,7 @@ public final class Utils {
     public static YarnConfiguration getYarnAndHadoopConfiguration(
             org.apache.flink.configuration.Configuration flinkConfig) {
         final YarnConfiguration yarnConfig = getYarnConfiguration(flinkConfig);
-        yarnConfig.addResource(HadoopUtils.getHadoopConfiguration(flinkConfig));
+        yarnConfig.addResource(HadoopUtils.getYarnAndHadoopConfiguration(flinkConfig));
 
         return yarnConfig;
     }

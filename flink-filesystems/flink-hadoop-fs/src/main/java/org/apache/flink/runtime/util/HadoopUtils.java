@@ -20,6 +20,7 @@ package org.apache.flink.runtime.util;
 
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.configuration.ConfigConstants;
+import org.apache.flink.core.fs.Path;
 import org.apache.flink.util.FlinkRuntimeException;
 import org.apache.flink.util.Preconditions;
 
@@ -49,9 +50,25 @@ public class HadoopUtils {
     /** The prefixes that Flink adds to the Hadoop config. */
     private static final String[] FLINK_CONFIG_PREFIXES = {"flink.hadoop."};
 
-    @SuppressWarnings("deprecation")
+    private static final String[] HADOOP_CONF_FILES = {"core-site.xml", "hdfs-site.xml"};
+
+    private static final String[] YARN_AND_HADOOP_CONF_FILES = {
+            "core-site.xml", "hdfs-site.xml", "yarn-site.xml"
+    };
+
     public static Configuration getHadoopConfiguration(
             org.apache.flink.configuration.Configuration flinkConfiguration) {
+        return getConfiguration(flinkConfiguration, HADOOP_CONF_FILES);
+    }
+
+    public static Configuration getYarnAndHadoopConfiguration(
+            org.apache.flink.configuration.Configuration flinkConfiguration) {
+        return getConfiguration(flinkConfiguration, YARN_AND_HADOOP_CONF_FILES);
+    }
+
+    @SuppressWarnings("deprecation")
+    private static Configuration getConfiguration(
+            org.apache.flink.configuration.Configuration flinkConfiguration, String[] files) {
 
         // Instantiate an HdfsConfiguration to load the hdfs-site.xml and hdfs-default.xml
         // from the classpath
@@ -77,7 +94,8 @@ public class HadoopUtils {
 
         for (String possibleHadoopConfPath : possibleHadoopConfPaths) {
             if (possibleHadoopConfPath != null) {
-                foundHadoopConfiguration = addHadoopConfIfFound(result, possibleHadoopConfPath);
+                foundHadoopConfiguration =
+                        addHadoopConfIfFound(result, possibleHadoopConfPath, files);
             }
         }
 
@@ -106,7 +124,8 @@ public class HadoopUtils {
         if (hadoopConfigPath != null) {
             LOG.debug("Searching Hadoop configuration files in Flink config: {}", hadoopConfigPath);
             foundHadoopConfiguration =
-                    addHadoopConfIfFound(result, hadoopConfigPath) || foundHadoopConfiguration;
+                    addHadoopConfIfFound(result, hadoopConfigPath, files)
+                            || foundHadoopConfiguration;
         }
 
         // Approach 3: HADOOP_CONF_DIR environment variable
@@ -114,7 +133,7 @@ public class HadoopUtils {
         if (hadoopConfDir != null) {
             LOG.debug("Searching Hadoop configuration files in HADOOP_CONF_DIR: {}", hadoopConfDir);
             foundHadoopConfiguration =
-                    addHadoopConfIfFound(result, hadoopConfDir) || foundHadoopConfiguration;
+                    addHadoopConfIfFound(result, hadoopConfDir, files) || foundHadoopConfiguration;
         }
 
         // Approach 4: Flink configuration
@@ -223,28 +242,37 @@ public class HadoopUtils {
      * found.
      */
     private static boolean addHadoopConfIfFound(
-            Configuration configuration, String possibleHadoopConfPath) {
+            Configuration configuration, String possibleHadoopConfPath, String[] files) {
         boolean foundHadoopConfiguration = false;
         if (new File(possibleHadoopConfPath).exists()) {
-            if (new File(possibleHadoopConfPath + "/core-site.xml").exists()) {
-                configuration.addResource(
-                        new org.apache.hadoop.fs.Path(possibleHadoopConfPath + "/core-site.xml"));
-                LOG.debug(
-                        "Adding "
-                                + possibleHadoopConfPath
-                                + "/core-site.xml to hadoop configuration");
-                foundHadoopConfiguration = true;
-            }
-            if (new File(possibleHadoopConfPath + "/hdfs-site.xml").exists()) {
-                configuration.addResource(
-                        new org.apache.hadoop.fs.Path(possibleHadoopConfPath + "/hdfs-site.xml"));
-                LOG.debug(
-                        "Adding "
-                                + possibleHadoopConfPath
-                                + "/hdfs-site.xml to hadoop configuration");
-                foundHadoopConfiguration = true;
+            for (String file : files) {
+                foundHadoopConfiguration =
+                        addConfResource(
+                                configuration,
+                                possibleHadoopConfPath,
+                                file) || foundHadoopConfiguration;
             }
         }
         return foundHadoopConfiguration;
+    }
+
+    private static boolean addConfResource(
+            Configuration configuration, String possibleHadoopConfPath, String child) {
+        boolean foundHadoopConfiguration = false;
+        String filePath = generateFilePath(possibleHadoopConfPath, child);
+        if (new File(filePath).exists()) {
+            loadFoundResource(configuration, filePath);
+            foundHadoopConfiguration = true;
+        }
+        return foundHadoopConfiguration;
+    }
+
+    private static String generateFilePath(String possibleHadoopConfPath, String child) {
+        return possibleHadoopConfPath + Path.SEPARATOR + child;
+    }
+
+    private static void loadFoundResource(Configuration configuration, String filePath) {
+        configuration.addResource(new org.apache.hadoop.fs.Path(filePath));
+        LOG.debug("Adding " + filePath + " to hadoop configuration");
     }
 }

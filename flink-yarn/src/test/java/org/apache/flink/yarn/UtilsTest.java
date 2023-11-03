@@ -28,17 +28,23 @@ import org.apache.hadoop.yarn.api.records.Resource;
 import org.apache.hadoop.yarn.conf.YarnConfiguration;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.rules.TemporaryFolder;
 
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.Assert.assertEquals;
 
 /** Tests for {@link Utils}. */
 class UtilsTest {
@@ -212,5 +218,47 @@ class UtilsTest {
         final Resource unitResource = Utils.getUnitResource(yarnConfig);
         assertThat(unitResource.getMemorySize()).isEqualTo(expectedMem);
         assertThat(unitResource.getVirtualCores()).isEqualTo(expectedVcore);
+    }
+
+    @SuppressWarnings("deprecation")
+    @Test
+    void testGetYarnAndHadoopConfiguration() throws IOException {
+        final String k1 = "singing?";
+        final String v1 = "rain!";
+        final String k2 = "dancing?";
+        final String v2 = "shower!";
+        TemporaryFolder tempFolder = new TemporaryFolder();
+        tempFolder.create();
+        final File confDir = tempFolder.newFolder();
+        final File file1 = new File(confDir, "hdfs-site.xml");
+        final File file2 = new File(confDir, "yarn-site.xml");
+        printConfig(file1, k1, v1);
+        printConfig(file2, k2, v2);
+        final Configuration cfg = new Configuration();
+        cfg.setString(ConfigConstants.PATH_HADOOP_CONFIG, confDir.getAbsolutePath());
+        final YarnConfiguration yarnConfiguration = Utils.getYarnAndHadoopConfiguration(cfg);
+        assertEquals(v1, yarnConfiguration.get(k1, null));
+        assertEquals(v2, yarnConfiguration.get(k2, null));
+    }
+
+    private static void printConfig(File file, String key, String value) throws IOException {
+        Map<String, String> map = new HashMap<>(1);
+        map.put(key, value);
+        printConfigs(file, map);
+    }
+
+    private static void printConfigs(File file, Map<String, String> properties) throws IOException {
+        try (PrintStream out = new PrintStream(new FileOutputStream(file))) {
+            out.println("<?xml version=\"1.0\"?>");
+            out.println("<?xml-stylesheet type=\"text/xsl\" href=\"configuration.xsl\"?>");
+            out.println("<configuration>");
+            for (Map.Entry<String, String> entry : properties.entrySet()) {
+                out.println("\t<property>");
+                out.println("\t\t<name>" + entry.getKey() + "</name>");
+                out.println("\t\t<value>" + entry.getValue() + "</value>");
+                out.println("\t</property>");
+            }
+            out.println("</configuration>");
+        }
     }
 }
